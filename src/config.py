@@ -669,6 +669,30 @@ class LLMSettings(HonchoSettings):
     OPENAI_BASE_URL: str | None = None
     GEMINI_BASE_URL: str | None = None
 
+    # --- Vertex AI (direct SDK) path for the gemini transport -----------------
+    # When enabled, the gemini transport authenticates to Google Vertex AI via
+    # Application Default Credentials / a service-account JSON instead of a
+    # Gemini Developer API key. In this mode GEMINI_API_KEY is not required.
+    #
+    # These bind to the standard Google env var names (NOT the LLM_ prefix) via
+    # validation_alias, so the canonical GOOGLE_* variables Just Work:
+    #   GOOGLE_GENAI_USE_VERTEXAI / GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION
+    #   / GOOGLE_APPLICATION_CREDENTIALS
+    GEMINI_USE_VERTEX: bool = Field(
+        default=False, validation_alias="GOOGLE_GENAI_USE_VERTEXAI"
+    )
+    GEMINI_VERTEX_PROJECT: str | None = Field(
+        default=None, validation_alias="GOOGLE_CLOUD_PROJECT"
+    )
+    GEMINI_VERTEX_LOCATION: str | None = Field(
+        default=None, validation_alias="GOOGLE_CLOUD_LOCATION"
+    )
+    # Path to the service-account JSON used for Vertex auth. If unset, the SDK
+    # falls back to ambient Application Default Credentials.
+    GEMINI_VERTEX_CREDENTIALS_PATH: str | None = Field(
+        default=None, validation_alias="GOOGLE_APPLICATION_CREDENTIALS"
+    )
+
     # General LLM settings
     DEFAULT_MAX_TOKENS: Annotated[int, Field(default=1000, gt=0, le=100_000)] = 2500
 

@@ -135,6 +135,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.template
 .venv
 env/
 venv/
@@ -142,6 +144,14 @@ ENV/
 env.bak/
 venv.bak/
 .env.backup*
+
+# Secrets — service account keys and any GCP/credential JSON (fork is public)
+service-account.json
+service-account*.json
+*-service-account.json
+gcp-*.json
+credentials.json
+GOOGLE_APPLICATION_CREDENTIALS*
 
 # Spyder project settings
 .spyderproject
@@ -193,3 +203,5 @@ metrics.jsonl
 AGENTS.md
 lancedb_data/
 grafana-data/
+# Added by code-review-graph
+.code-review-graph/

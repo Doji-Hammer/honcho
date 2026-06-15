@@ -8,6 +8,7 @@ history adapter selection) lives here now.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import assert_never
 
@@ -24,6 +25,7 @@ from .backends.anthropic import AnthropicBackend
 from .backends.gemini import GeminiBackend
 from .backends.openai import OpenAIBackend
 from .credentials import default_transport_api_key
+from .gemini_vertex import build_vertex_client, vertex_enabled
 from .history_adapters import (
     AnthropicHistoryAdapter,
     GeminiHistoryAdapter,
@@ -31,6 +33,8 @@ from .history_adapters import (
     OpenAIHistoryAdapter,
 )
 from .types import ProviderClient
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -54,7 +58,13 @@ def get_openai_client() -> AsyncOpenAI:
 
 @lru_cache(maxsize=1)
 def get_gemini_client() -> genai.Client:
-    """Default Gemini client built from settings.LLM.GEMINI_API_KEY."""
+    """Default Gemini client.
+
+    Vertex mode → service-account/ADC-authenticated Vertex client. Otherwise →
+    Developer-API client built from settings.LLM.GEMINI_API_KEY.
+    """
+    if vertex_enabled():
+        return build_vertex_client()
     http_options = (
         genai_types.HttpOptions(base_url=settings.LLM.GEMINI_BASE_URL)
         if settings.LLM.GEMINI_BASE_URL
@@ -86,7 +96,14 @@ def get_anthropic_override_client(
 def get_gemini_override_client(
     base_url: str | None, api_key: str | None
 ) -> genai.Client:
-    """Gemini client for a specific (base_url, api_key) pair. Cached by key."""
+    """Gemini client for a specific (base_url, api_key) pair. Cached by key.
+
+    Under Vertex mode there is no api key and no per-model base_url override to
+    apply (Vertex addressing comes from project/location), so we return the
+    shared Vertex client.
+    """
+    if vertex_enabled():
+        return build_vertex_client()
     http_options = genai_types.HttpOptions(base_url=base_url) if base_url else None
     return genai.Client(api_key=api_key, http_options=http_options)
 
@@ -108,7 +125,20 @@ if settings.LLM.OPENAI_API_KEY:
         base_url=settings.LLM.OPENAI_BASE_URL,
     )
 
-if settings.LLM.GEMINI_API_KEY:
+if vertex_enabled():
+    # Vertex mode authenticates via service account / ADC — no api key needed.
+    # Seed defensively: if the credentials file/ADC isn't available at import
+    # time (e.g. test runs, or the SA file not yet mounted), don't crash the
+    # whole import — the per-call paths (get_gemini_client / client_for_model_
+    # config) build the Vertex client lazily and will surface the error there.
+    try:
+        CLIENTS["gemini"] = build_vertex_client()
+    except Exception:  # pragma: no cover - defensive import-time guard
+        logger.warning(
+            "Deferred Vertex gemini client construction: credentials not available at import time; will retry on first use.",
+            exc_info=True,
+        )
+elif settings.LLM.GEMINI_API_KEY:
     http_options = (
         genai_types.HttpOptions(base_url=settings.LLM.GEMINI_BASE_URL)
         if settings.LLM.GEMINI_BASE_URL
@@ -134,6 +164,12 @@ def client_for_model_config(
         existing_client = CLIENTS.get(provider)
         if existing_client is not None:
             return existing_client
+
+    # Vertex-mode gemini authenticates via service account / ADC, so there is
+    # legitimately no api key — skip the api-key guard and the per-key override
+    # client (Vertex addressing comes from project/location, not base_url).
+    if provider == "gemini" and vertex_enabled():
+        return get_gemini_override_client(model_config.base_url, None)
 
     api_key = model_config.api_key or default_transport_api_key(provider)
     base_url = model_config.base_url

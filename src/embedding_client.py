@@ -154,21 +154,34 @@ class _EmbeddingClient:
         self.send_dimensions: bool = send_dimensions
 
         if self.transport == "gemini":
-            if not config.api_key:
-                raise ValueError("Gemini API key is required")
-            http_options = (
-                genai_types.HttpOptions(base_url=config.base_url)
-                if config.base_url
-                else None
-            )
-            self.client: genai.Client | AsyncOpenAI = genai.Client(
-                api_key=config.api_key,
-                http_options=http_options,
-            )
+            from src.llm.gemini_vertex import build_vertex_client, vertex_enabled
+
+            if vertex_enabled():
+                # Vertex mode authenticates via service account / ADC, so no
+                # api key is required. Reuse the same Vertex client builder as
+                # the chat path for consistency.
+                self.client: genai.Client | AsyncOpenAI = build_vertex_client()
+            else:
+                if not config.api_key:
+                    raise ValueError("Gemini API key is required")
+                http_options = (
+                    genai_types.HttpOptions(base_url=config.base_url)
+                    if config.base_url
+                    else None
+                )
+                self.client = genai.Client(
+                    api_key=config.api_key,
+                    http_options=http_options,
+                )
             # Gemini has a 2048 token limit
             self.max_embedding_tokens: int = min(max_input_tokens, 2048)
-            # Gemini batch size is not documented, using conservative estimate
-            self.max_batch_size: int = 100
+            # Batch size differs by backend: the Gemini Developer API accepts
+            # multiple inputs per request, but Vertex AI's embed endpoint returns
+            # only ONE embedding per call regardless of how many inputs are sent
+            # (sending N yields 1, so zip(..., strict=True) downstream raises).
+            # Force single-input requests under Vertex; keep the larger batch for
+            # the Developer API.
+            self.max_batch_size: int = 1 if vertex_enabled() else 100
         else:  # openai
             if not config.api_key:
                 raise ValueError("OpenAI API key is required")

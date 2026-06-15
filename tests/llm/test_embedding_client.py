@@ -96,6 +96,13 @@ async def test_openai_embedding_client_rejects_dimension_mismatch(
 async def test_gemini_embedding_client_uses_output_dimensionality(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # This test exercises the Gemini Developer-API path (api_key), so pin Vertex
+    # mode off — otherwise an ambient GOOGLE_GENAI_USE_VERTEXAI=True (e.g. from a
+    # local .env) would route construction through the Vertex client builder.
+    from src.config import settings
+
+    monkeypatch.setattr(settings.LLM, "GEMINI_USE_VERTEX", False)
+
     calls: list[dict[str, Any]] = []
 
     class FakeGeminiModels:
