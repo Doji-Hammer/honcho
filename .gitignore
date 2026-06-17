@@ -153,6 +153,11 @@ gcp-*.json
 credentials.json
 GOOGLE_APPLICATION_CREDENTIALS*
 
+# Personal data — peer cards / entity data hold PII (fork is public, never push)
+peers-setup/peer-cards.yaml
+peers-setup/*-private.yaml
+peers-setup/.honcho-env
+
 # Spyder project settings
 .spyderproject
 .spyproject
